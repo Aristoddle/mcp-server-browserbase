@@ -3,8 +3,10 @@
   "version": "2.4.1",
   "mcpServers": {
     "mcp-server-browserbase": {
-      "command": "npx",
-      "args": ["@browserbasehq/mcp-server-browserbase"]
+      "command": "node",
+      "args": [
+        "/Users/josephlanzone/.local/share/chezmoi/projects/mcp-server-browserbase/cli.js"
+      ]
     }
   }
 }
