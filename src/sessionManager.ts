@@ -83,9 +83,7 @@ export const createStagehandInstance = async (
 
   const stagehand = new Stagehand({
     env: envMode,
-    ...(envMode === "LOCAL" && cdpUrl
-      ? { localBrowserLaunchOptions: { cdpUrl } }
-      : {}),
+    ...(envMode === "LOCAL" && cdpUrl ? { cdpUrl } : {}),
     ...(envMode === "BROWSERBASE" ? { apiKey, projectId } : {}),
     model: modelConfig,
     ...(params.browserbaseSessionID && {
