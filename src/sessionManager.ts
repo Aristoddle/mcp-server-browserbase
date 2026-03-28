@@ -1,8 +1,35 @@
 import { Stagehand } from "@browserbasehq/stagehand";
 import type { Config } from "../config.d.ts";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 import type { BrowserSession, CreateSessionParams } from "./types/types.js";
 import { randomUUID } from "crypto";
+
+async function getLocalCdpUrl(): Promise<string | undefined> {
+  try {
+    const userDataDir = path.join(
+      os.homedir(),
+      "Library",
+      "Application Support",
+      "Google",
+      "Chrome",
+    );
+    const portPath = path.join(userDataDir, "DevToolsActivePort");
+    const fileContent = await fs.promises.readFile(portPath, "utf8");
+    const [rawPort, rawPath] = fileContent
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return `ws://127.0.0.1:${rawPort}${rawPath}`;
+  } catch {
+    process.stderr.write(
+      `[SessionManager] Local Chrome DevToolsActivePort not found or unreadable.\n`,
+    );
+    return undefined;
+  }
+}
 
 /**
  * Create a configured Stagehand instance
@@ -14,11 +41,18 @@ export const createStagehandInstance = async (
   params: CreateSessionParams = {},
   sessionId: string,
 ): Promise<Stagehand> => {
+  const cdpUrl = await getLocalCdpUrl();
+  const envMode = cdpUrl ? "LOCAL" : "BROWSERBASE";
+
   const apiKey = params.apiKey || config.browserbaseApiKey;
   const projectId = params.projectId || config.browserbaseProjectId;
 
-  if (!apiKey || !projectId) {
-    throw new Error("Browserbase API Key and Project ID are required");
+  if (envMode === "BROWSERBASE") {
+    if (!apiKey || !projectId) {
+      throw new Error(
+        "Browserbase API Key and Project ID are required for BROWSERBASE env",
+      );
+    }
   }
 
   const modelName = params.modelName || config.modelName || "gemini-2.0-flash";
@@ -28,9 +62,9 @@ export const createStagehandInstance = async (
     process.env.GOOGLE_API_KEY;
 
   const stagehand = new Stagehand({
-    env: "BROWSERBASE",
-    apiKey,
-    projectId,
+    env: envMode,
+    ...(envMode === "LOCAL" && cdpUrl ? { cdpUrl } : {}),
+    ...(envMode === "BROWSERBASE" ? { apiKey, projectId } : {}),
     model: modelApiKey
       ? {
           apiKey: modelApiKey,
@@ -41,27 +75,31 @@ export const createStagehandInstance = async (
       browserbaseSessionID: params.browserbaseSessionID,
     }),
     experimental: config.experimental ?? false,
-    browserbaseSessionCreateParams: {
-      projectId,
-      proxies: config.proxies,
-      keepAlive: config.keepAlive ?? false,
-      browserSettings: {
-        viewport: {
-          width: config.viewPort?.browserWidth ?? 1288,
-          height: config.viewPort?.browserHeight ?? 711,
-        },
-        context: config.context?.contextId
-          ? {
-              id: config.context?.contextId,
-              persist: config.context?.persist ?? true,
-            }
-          : undefined,
-        advancedStealth: config.advancedStealth ?? undefined,
-      },
-      userMetadata: {
-        mcp: "true",
-      },
-    },
+    ...(envMode === "BROWSERBASE"
+      ? {
+          browserbaseSessionCreateParams: {
+            projectId,
+            proxies: config.proxies,
+            keepAlive: config.keepAlive ?? false,
+            browserSettings: {
+              viewport: {
+                width: config.viewPort?.browserWidth ?? 1288,
+                height: config.viewPort?.browserHeight ?? 711,
+              },
+              context: config.context?.contextId
+                ? {
+                    id: config.context?.contextId,
+                    persist: config.context?.persist ?? true,
+                  }
+                : undefined,
+              advancedStealth: config.advancedStealth ?? undefined,
+            },
+            userMetadata: {
+              mcp: "true",
+            },
+          },
+        }
+      : {}),
     logger: (logLine) => {
       console.error(`Stagehand[${sessionId}]: ${logLine.message}`);
     },
@@ -142,15 +180,6 @@ export class SessionManager {
     config: Config,
     resumeSessionId?: string,
   ): Promise<BrowserSession> {
-    if (!config.browserbaseApiKey) {
-      throw new Error("Browserbase API Key is missing in the configuration.");
-    }
-    if (!config.browserbaseProjectId) {
-      throw new Error(
-        "Browserbase Project ID is missing in the configuration.",
-      );
-    }
-
     try {
       process.stderr.write(
         `[SessionManager] ${resumeSessionId ? "Resuming" : "Creating"} Stagehand session ${newSessionId}...\n`,
@@ -170,7 +199,8 @@ export class SessionManager {
         throw new Error("No pages available in Stagehand context");
       }
 
-      const browserbaseSessionId = stagehand.browserbaseSessionId;
+      const browserbaseSessionId =
+        stagehand.browserbaseSessionId || newSessionId;
 
       if (!browserbaseSessionId) {
         throw new Error(
@@ -179,11 +209,13 @@ export class SessionManager {
       }
 
       process.stderr.write(
-        `[SessionManager] Stagehand initialized with Browserbase session: ${browserbaseSessionId}\n`,
+        `[SessionManager] Stagehand initialized with session ID: ${browserbaseSessionId}\n`,
       );
-      process.stderr.write(
-        `[SessionManager] Browserbase Live Debugger URL: https://www.browserbase.com/sessions/${browserbaseSessionId}\n`,
-      );
+      if (stagehand.browserbaseSessionId) {
+        process.stderr.write(
+          `[SessionManager] Browserbase Live Debugger URL: https://www.browserbase.com/sessions/${browserbaseSessionId}\n`,
+        );
+      }
 
       const sessionObj: BrowserSession = {
         page,
