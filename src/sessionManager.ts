@@ -55,22 +55,37 @@ export const createStagehandInstance = async (
     }
   }
 
-  const modelName = params.modelName || config.modelName || "gemini-2.0-flash";
+  // Use Azure by default
+  const isAzure = !!process.env.AZURE_API_KEY && !!process.env.AZURE_BASE_URL;
+  const defaultModelName = isAzure
+    ? "azure/claude-sonnet-4-6"
+    : "gemini-2.0-flash";
+  const modelName = params.modelName || config.modelName || defaultModelName;
+
   const modelApiKey =
     config.modelApiKey ||
+    process.env.AZURE_API_KEY ||
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY;
+
+  const modelConfig = isAzure
+    ? {
+        modelName: modelName,
+        apiKey: modelApiKey,
+        baseURL: process.env.AZURE_BASE_URL,
+      }
+    : modelApiKey
+      ? {
+          apiKey: modelApiKey,
+          modelName: modelName,
+        }
+      : modelName;
 
   const stagehand = new Stagehand({
     env: envMode,
     ...(envMode === "LOCAL" && cdpUrl ? { cdpUrl } : {}),
     ...(envMode === "BROWSERBASE" ? { apiKey, projectId } : {}),
-    model: modelApiKey
-      ? {
-          apiKey: modelApiKey,
-          modelName: modelName,
-        }
-      : modelName,
+    model: modelConfig,
     ...(params.browserbaseSessionID && {
       browserbaseSessionID: params.browserbaseSessionID,
     }),
