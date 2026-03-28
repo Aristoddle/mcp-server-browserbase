@@ -5,6 +5,7 @@
     "mcp-server-browserbase": {
       "command": "node",
       "args": [
+        "--env-file=/Users/josephlanzone/.local/share/chezmoi/projects/mcp-server-browserbase/.env",
         "/Users/josephlanzone/.local/share/chezmoi/projects/mcp-server-browserbase/cli.js"
       ]
     }

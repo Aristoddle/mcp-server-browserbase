@@ -9,6 +9,23 @@ import { randomUUID } from "crypto";
 
 async function getLocalCdpUrl(): Promise<string | undefined> {
   try {
+    // 1. Prioritize fallback instance (full automation capability)
+    const httpRes = await fetch("http://127.0.0.1:9222/json/version").catch(
+      () => null,
+    );
+    if (httpRes && httpRes.ok) {
+      const data = await httpRes.json();
+      if (data.webSocketDebuggerUrl) {
+        return data.webSocketDebuggerUrl;
+      }
+      return "http://127.0.0.1:9222";
+    }
+  } catch {
+    // Ignore and proceed to fallback
+  }
+
+  // 2. Fallback to UI-toggled instance (may have Network.enable restrictions)
+  try {
     const userDataDir = path.join(
       os.homedir(),
       "Library",
@@ -83,7 +100,9 @@ export const createStagehandInstance = async (
 
   const stagehand = new Stagehand({
     env: envMode,
-    ...(envMode === "LOCAL" && cdpUrl ? { cdpUrl } : {}),
+    ...(envMode === "LOCAL" && cdpUrl
+      ? { localBrowserLaunchOptions: { cdpUrl } }
+      : {}),
     ...(envMode === "BROWSERBASE" ? { apiKey, projectId } : {}),
     model: modelConfig,
     ...(params.browserbaseSessionID && {
