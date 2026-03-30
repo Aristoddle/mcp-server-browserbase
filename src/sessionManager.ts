@@ -72,11 +72,10 @@ export const createStagehandInstance = async (
     }
   }
 
-  // Use Azure by default
   const isAzure = !!process.env.AZURE_API_KEY && !!process.env.AZURE_BASE_URL;
   const defaultModelName = isAzure
-    ? "azure/claude-sonnet-4-6"
-    : "gemini-2.0-flash";
+    ? "azure/gpt-4.1"
+    : "google/gemini-2.5-flash";
   const modelName = params.modelName || config.modelName || defaultModelName;
 
   const modelApiKey =
@@ -85,18 +84,24 @@ export const createStagehandInstance = async (
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY;
 
-  const modelConfig = isAzure
-    ? {
-        modelName: modelName,
-        apiKey: modelApiKey,
-        baseURL: process.env.AZURE_BASE_URL,
+  // In Stagehand 3.2.0, model is just an object with modelName, apiKey, and baseURL.
+  // We extract the resourceName from AZURE_BASE_URL if it's an Azure endpoint.
+  const isAzureOpenAI = modelName.startsWith("azure/");
+  let resourceName = undefined;
+  if (isAzureOpenAI && process.env.AZURE_BASE_URL) {
+      try {
+          const url = new URL(process.env.AZURE_BASE_URL);
+          resourceName = url.hostname.split('.')[0];
+      } catch (e) {
+          // ignore
       }
-    : modelApiKey
-      ? {
-          apiKey: modelApiKey,
-          modelName: modelName,
-        }
-      : modelName;
+  }
+
+  const modelConfig = {
+      modelName: modelName,
+      apiKey: modelApiKey,
+      ...(isAzureOpenAI && process.env.AZURE_BASE_URL ? { baseURL: process.env.AZURE_BASE_URL } : {})
+  };
 
   const stagehand = new Stagehand({
     env: envMode,
